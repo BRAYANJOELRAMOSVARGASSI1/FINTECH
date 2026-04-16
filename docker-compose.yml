@@ -1,0 +1,51 @@
+version: "3.8"
+
+services:
+  # ──────────────────────────────────────────────
+  # PostgreSQL + TimescaleDB
+  # ──────────────────────────────────────────────
+  db:
+    image: timescale/timescaledb:latest-pg16
+    container_name: finengine_db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: finengine
+      POSTGRES_PASSWORD: finengine_secret
+      POSTGRES_DB: finengine_db
+    volumes:
+      - finengine_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finengine -d finengine_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ──────────────────────────────────────────────
+  # Backend API
+  # ──────────────────────────────────────────────
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: finengine_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: production
+      DEBUG: "false"
+      DATABASE_URL: postgresql+asyncpg://finengine:finengine_secret@db:5432/finengine_db
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-jwt-in-production}
+      CORS_ORIGINS: '["http://localhost:3000"]'
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+
+volumes:
+  finengine_pgdata:
+    driver: local
